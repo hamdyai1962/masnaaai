@@ -1,0 +1,489 @@
+
+// ═══════════════════════════════════════════════════════
+// TAB 1: HOME
+// ═══════════════════════════════════════════════════════
+F.render_home = function() {
+    var s = this;
+    var el = document.getElementById('p-home');
+    if (!el) return;
+    var dep = s.agents.filter(function(a){return a.deployed}).length;
+    var best = null; var bs = 0;
+    for (var i=0;i<s.agents.length;i++){if((s.agents[i].quality_score||0)>bs){bs=s.agents[i].quality_score;best=s.agents[i];}}
+
+    var bestH = '';
+    if (best) {
+        var bi = s.agents.indexOf(best);
+        bestH = '<div class="cd cd-g" style="margin-bottom:14px"><div class="cd-h">🏆 أفضل وكيل</div>' +
+            '<div style="display:flex;align-items:center;gap:12px">' +
+            '<span style="font-size:36px">' + SEC.sanitize(best.icon) + '</span>' +
+            '<div><strong>' + SEC.sanitize(best.name) + '</strong><br><span class="bdg bdg-g">جودة: ' + bs + '%</span></div>' +
+            '<button class="btn bg bsm" style="margin-right:auto" onclick="F.openChat(' + bi + ')">💬 محادثة</button></div></div>';
+    }
+
+    var quickTemplates = '';
+    for (var t = 0; t < Math.min(6, s.TEMPLATES.length); t++) {
+        var tm = s.TEMPLATES[t];
+        quickTemplates += '<div class="cd cd-g" style="cursor:pointer" onclick="F.installTemplate(' + t + ')">' +
+            '<div style="font-size:28px;margin-bottom:6px">' + tm.icon + '</div>' +
+            '<strong style="font-size:12px">' + SEC.sanitize(tm.name) + '</strong>' +
+            '<p style="font-size:10px;color:var(--text3);margin-top:3px">' + SEC.sanitize(tm.desc).substring(0,60) + '</p></div>';
+    }
+
+    el.innerHTML = '<div class="hero"><h1>مصنع وكلاء HAMDY.AI 🏭</h1>' +
+        '<p>بناء ونشر وكلاء ذكاء اصطناعي متقدمين — 30 نموذج مجاناً عبر Puter.com</p></div>' +
+        '<div class="g2" style="margin-bottom:14px">' +
+        '<div class="sc"><div class="sv cg">' + s.agents.length + '</div><div class="sl">وكلاء</div></div>' +
+        '<div class="sc"><div class="sv cp">' + dep + '</div><div class="sl">منشورة</div></div>' +
+        '<div class="sc"><div class="sv cb">' + MODELS.length + '</div><div class="sl">نماذج AI</div></div>' +
+        '<div class="sc"><div class="sv co">' + (s.analytics.totalChats||0) + '</div><div class="sl">محادثات</div></div></div>' +
+        bestH +
+        '<div class="cd" style="margin-bottom:14px"><div class="cd-h">🪄 بناء سريع بالوصف</div>' +
+        '<textarea class="inp" id="homeDesc" placeholder="صِف الوكيل... مثلاً: أريد محامي مصري متخصص في قانون العمل" style="min-height:70px;margin-bottom:8px"></textarea>' +
+        '<button class="btn bg" onclick="F.smartBuild(document.getElementById(\'homeDesc\').value)">🪄 بناء ذكي</button></div>' +
+        '<div class="cd-h" style="margin-bottom:8px">🛒 قوالب سريعة</div>' +
+        '<div class="g3">' + quickTemplates + '</div>';
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB 2: BUILD
+// ═══════════════════════════════════════════════════════
+F.render_build = function() {
+    var el = document.getElementById('p-build');
+    if (!el) return;
+
+    var modelOpts = '';
+    for (var i=0;i<MODELS.length;i++){
+        var m = MODELS[i];
+        if (m.ctx === 0) continue;
+        modelOpts += '<option value="' + m.id + '">' + m.icon + ' ' + m.n + ' (' + m.p + ')</option>';
+    }
+
+    el.innerHTML = '<div class="cd-h" style="font-size:18px;margin-bottom:14px">🔨 بناء وكيل جديد</div>' +
+        '<div class="cd cd-g" style="margin-bottom:14px;border-color:var(--gbd)">' +
+        '<div class="cd-h">🪄 الطريقة السريعة — بناء بالوصف النصي</div>' +
+        '<textarea class="inp" id="buildDesc" placeholder="صف الوكيل بالتفصيل...\n\nمثال: أريد مستشار قانوني مصري متخصص في قانون العمل والتأمينات الاجتماعية، يتحدث بالعربية الفصحى المبسطة، يذكر المواد القانونية، ويقدم نصائح عملية..." style="min-height:100px;margin-bottom:10px"></textarea>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="btn bg" onclick="F.smartBuild(document.getElementById(\'buildDesc\').value)">🪄 بناء ذكي من الوصف</button>' +
+        '<button class="btn bs" onclick="F.fillExample()">💡 مثال</button></div></div>' +
+        '<div class="cd"><div class="cd-h">🔧 الطريقة اليدوية</div>' +
+        '<div class="g2" style="margin-bottom:12px">' +
+        '<div class="fg"><label class="lbl">اسم الوكيل *</label><input class="inp" id="mName" placeholder="المستشار القانوني"></div>' +
+        '<div class="fg"><label class="lbl">أيقونة</label><input class="inp" id="mIcon" value="🤖" style="text-align:center;font-size:20px"></div></div>' +
+        '<div class="fg"><label class="lbl">الوصف</label><textarea class="inp" id="mDesc" placeholder="وصف مختصر..."></textarea></div>' +
+        '<div class="g2" style="margin-bottom:12px">' +
+        '<div class="fg"><label class="lbl">النموذج</label><select class="inp" id="mModel">' + modelOpts + '</select></div>' +
+        '<div class="fg"><label class="lbl">Temperature</label><input class="inp" id="mTemp" type="number" value="0.6" min="0" max="1.5" step="0.1"></div></div>' +
+        '<div class="fg"><label class="lbl">System Prompt *</label><textarea class="inp" id="mSP" style="min-height:120px" placeholder="أنت مساعد ذكي متخصص في..."></textarea></div>' +
+        '<div class="fg"><label class="lbl">معرفة مخصصة (RAG)</label><textarea class="inp" id="mKB" placeholder="معرفة إضافية..."></textarea></div>' +
+        '<button class="btn bg" onclick="F.manualBuild()">🏗️ بناء يدوي</button></div>';
+};
+
+F.fillExample = function() {
+    var d = document.getElementById('buildDesc');
+    if (d) d.value = 'أريد مستشار قانوني مصري متقدم متخصص في قانون العمل والتأمينات الاجتماعية المصري. يتحدث بالعربية الفصحى المبسطة. يذكر دائماً رقم المادة القانونية المرتبطة. يقدم نصائح عملية وخطوات واضحة. ينبه دائماً أن استشاراته إرشادية وليست بديلاً عن محامٍ متخصص.';
+    this.toast('💡 تم إضافة مثال', 'in');
+};
+
+F.manualBuild = function() {
+    var name = (document.getElementById('mName')||{}).value;
+    var sp = (document.getElementById('mSP')||{}).value;
+    if (!name || !sp) { this.toast('أدخل الاسم و System Prompt', 'er'); return; }
+    var agent = {
+        id: this.uid(),
+        name: name,
+        name_en: '',
+        icon: (document.getElementById('mIcon')||{}).value || '🤖',
+        domain: 'custom',
+        desc: (document.getElementById('mDesc')||{}).value || '',
+        model_id: (document.getElementById('mModel')||{}).value || 'gpt-4o',
+        fallback_model: 'gpt-4o-mini',
+        framework: 'standard',
+        modLevel: 2,
+        temperature: parseFloat((document.getElementById('mTemp')||{}).value) || 0.6,
+        capabilities: [],
+        knowledge: (document.getElementById('mKB')||{}).value || '',
+        system_prompt: sp,
+        dna: null,
+        quality_score: 50,
+        xp: 0, chatCount: 0, deployed: false, deploy_url: '',
+        createdAt: new Date().toISOString()
+    };
+    this.agents.push(agent);
+    this.saveData();
+    this.toast('🏗️ تم بناء "' + name + '"!', 'ok');
+    this.go('my');
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB 3: MARKET
+// ═══════════════════════════════════════════════════════
+F.render_market = function() {
+    var s = this;
+    var el = document.getElementById('p-market');
+    if (!el) return;
+
+    var cards = '';
+    for (var i = 0; i < s.TEMPLATES.length; i++) {
+        var t = s.TEMPLATES[i];
+        var m = s.getModel(t.model_id);
+        cards += '<div class="ac"><div class="ach">' +
+            '<div class="aav tc">' + t.icon + '</div>' +
+            '<div class="ain"><h3>' + SEC.sanitize(t.name) + '</h3><div class="sub">' + SEC.sanitize(t.domain) + ' • ' + SEC.sanitize(m.n) + '</div></div></div>' +
+            '<div class="acb"><p>' + SEC.sanitize(t.desc) + '</p></div>' +
+            '<div class="acf"><button class="btn bg" onclick="F.installTemplate(' + i + ')">📦 تثبيت</button>' +
+            '<button class="btn bs" onclick="F.previewTemplate(' + i + ')">👁️ معاينة</button></div></div>';
+    }
+
+    el.innerHTML = '<div class="cd-h" style="font-size:18px;margin-bottom:14px">🛒 سوق القوالب — ' + s.TEMPLATES.length + ' قالب جاهز</div>' +
+        '<div class="g3">' + cards + '</div>';
+};
+
+F.previewTemplate = function(idx) {
+    var t = this.TEMPLATES[idx];
+    if (!t) return;
+    var m = this.getModel(t.model_id);
+    this.modal(
+        '<h2>' + t.icon + ' ' + SEC.sanitize(t.name) + '</h2>' +
+        '<p style="color:var(--text2);margin-bottom:12px">' + SEC.sanitize(t.desc) + '</p>' +
+        '<div class="g2" style="margin-bottom:12px">' +
+        '<div class="cd"><strong>النموذج:</strong> ' + SEC.sanitize(m.n) + '</div>' +
+        '<div class="cd"><strong>الإطار:</strong> ' + SEC.sanitize(t.framework) + '</div>' +
+        '<div class="cd"><strong>الترشيح:</strong> مستوى ' + t.modLevel + '</div>' +
+        '<div class="cd"><strong>Temperature:</strong> ' + t.temperature + '</div></div>' +
+        '<div class="cd" style="margin-bottom:12px"><strong>System Prompt:</strong><p style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.8">' + SEC.sanitize(t.system_prompt).substring(0,500) + '...</p></div>' +
+        '<button class="btn bg" onclick="F.installTemplate(' + idx + ');F.closeModal()">📦 تثبيت الآن</button>'
+    );
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB 4: MY AGENTS
+// ═══════════════════════════════════════════════════════
+F.render_my = function() {
+    var s = this;
+    var el = document.getElementById('p-my');
+    if (!el) return;
+
+    if (s.agents.length === 0) {
+        el.innerHTML = '<div class="emy"><div class="ei">🤖</div><h3>لا يوجد وكلاء</h3><p>ابدأ ببناء أول وكيل ذكي</p>' +
+            '<button class="btn bg" onclick="F.go(\'build\')">🔨 بناء وكيل</button></div>';
+        return;
+    }
+
+    var cards = '';
+    for (var i = 0; i < s.agents.length; i++) {
+        var a = s.agents[i];
+        var m = s.getModel(a.model_id);
+        var domCls = {legal:'tl',health:'tm',coding:'tt',education:'te',finance:'tf',creative:'tc'};
+        var cls = domCls[a.domain] || 'tc';
+        var depBadge = a.deployed ? '<span class="bdg bdg-g">🌐 منشور</span>' : '<span class="bdg bdg-p">محلي</span>';
+
+        cards += '<div class="ac"><div class="ach">' +
+            '<div class="aav ' + cls + '">' + SEC.sanitize(a.icon) + '</div>' +
+            '<div class="ain"><h3>' + SEC.sanitize(a.name) + '</h3><div class="sub">' + SEC.sanitize(a.domain) + ' • جودة: ' + (a.quality_score||0) + '% • XP: ' + (a.xp||0) + '</div></div></div>' +
+            '<div class="acb"><p>' + SEC.sanitize((a.desc||'').substring(0,100)) + '</p>' +
+            '<div style="display:flex;gap:4px;flex-wrap:wrap">' + depBadge +
+            '<span class="bdg bdg-b">' + SEC.sanitize(m.n) + '</span>' +
+            '<span class="bdg bdg-p">💬 ' + (a.chatCount||0) + '</span></div></div>' +
+            '<div class="acf">' +
+            '<button class="btn bg" onclick="F.openChat(' + i + ')">💬 محادثة</button>' +
+            '<button class="btn bp" onclick="F.deployAgent(' + i + ')">🚀 نشر</button>' +
+            '<button class="btn bo" onclick="F.testAgent(' + i + ')">🧪 اختبار</button>' +
+            '<button class="btn bs" onclick="F.cloneAgent(' + i + ')">📋 نسخ</button>' +
+            '<button class="btn bd" onclick="F.deleteAgent(' + i + ')">🗑️</button>' +
+            '</div></div>';
+    }
+
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">' +
+        '<div class="cd-h" style="font-size:18px;margin:0;border:none;padding:0">🤖 وكلائي (' + s.agents.length + ')</div>' +
+        '<div style="display:flex;gap:6px">' +
+        '<button class="btn bg bsm" onclick="F.go(\'build\')">➕ وكيل جديد</button>' +
+        '<button class="btn bs bsm" onclick="F.exportAll()">📤 تصدير</button>' +
+        '<button class="btn bs bsm" onclick="F.importAgents()">📥 استيراد</button></div></div>' +
+        '<div class="g3">' + cards + '</div>';
+};
+
+F.importAgents = function() {
+    var s = this;
+    s.modal(
+        '<h2>📥 استيراد وكلاء</h2>' +
+        '<p style="color:var(--text2);margin-bottom:12px">اختر ملف JSON للاستيراد</p>' +
+        '<input type="file" id="impFile" accept=".json" class="inp" style="padding:20px">' +
+        '<div style="margin-top:12px"><button class="btn bg" onclick="F.doImport()">📥 استيراد</button></div>'
+    );
+};
+
+F.doImport = function() {
+    var s = this;
+    var file = document.getElementById('impFile');
+    if (!file || !file.files[0]) { s.toast('اختر ملفاً', 'er'); return; }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            var data = JSON.parse(e.target.result);
+            var imported = 0;
+            var list = data.agents || (Array.isArray(data) ? data : [data]);
+            for (var i = 0; i < list.length; i++) {
+                var valid = SEC.validateAgent(list[i]);
+                if (valid) { s.agents.push(valid); imported++; }
+            }
+            s.saveData();
+            s.closeModal();
+            s.toast('📥 تم استيراد ' + imported + ' وكيل', 'ok');
+            s.go('my');
+        } catch(err) { s.toast('❌ ملف غير صالح: ' + err.message, 'er'); }
+    };
+    reader.readAsText(file.files[0]);
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB 5: MULTIMODAL
+// ═══════════════════════════════════════════════════════
+F.render_media = function() {
+    var el = document.getElementById('p-media');
+    if (!el) return;
+    el.innerHTML = '<div class="cd-h" style="font-size:18px;margin-bottom:14px">🎭 الوسائط المتعددة</div>' +
+        '<div class="g2">' +
+        '<div class="cd cd-g" style="text-align:center;padding:30px;cursor:pointer" onclick="F.genImage()">' +
+        '<div style="font-size:40px;margin-bottom:8px">🎨</div><strong>توليد صور</strong>' +
+        '<p style="font-size:11px;color:var(--text2);margin-top:4px">أنشئ صوراً بالذكاء الاصطناعي</p></div>' +
+        '<div class="cd cd-g" style="text-align:center;padding:30px;cursor:pointer" onclick="F.textToSpeech()">' +
+        '<div style="font-size:40px;margin-bottom:8px">🔊</div><strong>تحويل نص لصوت</strong>' +
+        '<p style="font-size:11px;color:var(--text2);margin-top:4px">TTS عبر Puter.ai</p></div>' +
+        '<div class="cd cd-g" style="text-align:center;padding:30px;cursor:pointer" onclick="F.analyzeImage()">' +
+        '<div style="font-size:40px;margin-bottom:8px">👁️</div><strong>تحليل صور</strong>' +
+        '<p style="font-size:11px;color:var(--text2);margin-top:4px">فهم محتوى الصور</p></div>' +
+        '</div>';
+};
+
+F.genImage = function() {
+    var s = this;
+    s.modal(
+        '<h2>🎨 توليد صورة</h2>' +
+        '<div class="fg"><label class="lbl">وصف الصورة</label><textarea class="inp" id="imgPrompt" placeholder="اكتب وصفاً تفصيلياً للصورة..."></textarea></div>' +
+        '<div class="fg"><label class="lbl">النموذج</label><select class="inp" id="imgModel">' +
+        '<option value="dall-e-3">DALL-E 3</option>' +
+        '<option value="gpt-image-1">GPT Image 1</option></select></div>' +
+        '<button class="btn bg" id="imgBtn" onclick="F.doGenImage()">🎨 توليد</button>' +
+        '<div id="imgResult" style="margin-top:12px;text-align:center"></div>'
+    );
+};
+
+F.doGenImage = function() {
+    var s = this;
+    var prompt = (document.getElementById('imgPrompt')||{}).value;
+    if (!prompt) { s.toast('اكتب وصفاً', 'er'); return; }
+    if (!s.puterOK) { s.toast('يجب الاتصال بـ Puter', 'er'); return; }
+    var btn = document.getElementById('imgBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> جاري التوليد...'; }
+    var model = (document.getElementById('imgModel')||{}).value || 'dall-e-3';
+    puter.ai.txt2img(prompt, {model:model}).then(function(img) {
+        var res = document.getElementById('imgResult');
+        if (res && img) {
+            var url = (typeof img === 'string') ? img : (img.url || img.src || '');
+            if (url) res.innerHTML = '<img src="' + url + '" style="max-width:100%;border-radius:12px;margin-top:8px">';
+            else res.innerHTML = '<p style="color:var(--text2)">تم التوليد ولكن لا يوجد رابط</p>';
+        }
+        if (btn) { btn.disabled = false; btn.innerHTML = '🎨 توليد'; }
+    }).catch(function(e) {
+        if (btn) { btn.disabled = false; btn.innerHTML = '🎨 توليد'; }
+        s.toast('❌ فشل التوليد: ' + e.message, 'er');
+    });
+};
+
+F.textToSpeech = function() {
+    var s = this;
+    s.modal(
+        '<h2>🔊 تحويل نص لصوت</h2>' +
+        '<div class="fg"><textarea class="inp" id="ttsText" placeholder="اكتب النص المراد تحويله..."></textarea></div>' +
+        '<button class="btn bg" onclick="F.doTTS()">🔊 تحويل</button>' +
+        '<div id="ttsResult" style="margin-top:12px"></div>'
+    );
+};
+
+F.doTTS = function() {
+    var text = (document.getElementById('ttsText')||{}).value;
+    if (!text) return;
+    if (this.puterOK && puter.ai.txt2speech) {
+        puter.ai.txt2speech(text).then(function(audio) {
+            var res = document.getElementById('ttsResult');
+            if (res) res.innerHTML = '<audio controls autoplay style="width:100%"><source src="' + (audio.url||audio) + '"></audio>';
+        }).catch(function() {
+            var u = new SpeechSynthesisUtterance(text);
+            u.lang = 'ar'; speechSynthesis.speak(u);
+        });
+    } else {
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ar'; speechSynthesis.speak(u);
+    }
+};
+
+F.analyzeImage = function() {
+    this.modal(
+        '<h2>👁️ تحليل صورة</h2>' +
+        '<p style="color:var(--text2);margin-bottom:12px">هذه الميزة تتطلب نموذج يدعم الرؤية مثل GPT-4o أو Claude</p>' +
+        '<div class="fg"><label class="lbl">رابط الصورة</label><input class="inp" id="imgUrl" placeholder="https://..."></div>' +
+        '<div class="fg"><label class="lbl">سؤال عن الصورة</label><input class="inp" id="imgQ" placeholder="ما الذي تراه في هذه الصورة؟"></div>' +
+        '<button class="btn bg" onclick="F.doAnalyzeImg()">👁️ تحليل</button>' +
+        '<div id="imgAResult" style="margin-top:12px"></div>'
+    );
+};
+
+F.doAnalyzeImg = function() {
+    var s = this;
+    var url = (document.getElementById('imgUrl')||{}).value;
+    var q = (document.getElementById('imgQ')||{}).value || 'صف هذه الصورة';
+    if (!url) { s.toast('أدخل رابط صورة', 'er'); return; }
+    if (!s.puterOK) { s.toast('يجب الاتصال بـ Puter', 'er'); return; }
+    s.callAI(q, 'gpt-4o', 0.3).then(function(r) {
+        var res = document.getElementById('imgAResult');
+        if (res) res.innerHTML = '<div class="cd">' + SEC.renderMD(r) + '</div>';
+    }).catch(function(e) { s.toast('❌ ' + e.message, 'er'); });
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB 6: VOICE
+// ═══════════════════════════════════════════════════════
+F.render_voice = function() {
+    var el = document.getElementById('p-voice');
+    if (!el) return;
+    el.innerHTML = '<div class="cd-h" style="font-size:18px;margin-bottom:14px">🎤 الأوامر الصوتية</div>' +
+        '<div class="g2">' +
+        '<div class="cd" style="text-align:center;padding:30px">' +
+        '<div style="font-size:50px;margin-bottom:10px">🎤</div>' +
+        '<button class="btn bg" id="micBtn" onclick="F.startSTT()">🎤 ابدأ التسجيل</button>' +
+        '<div id="sttResult" style="margin-top:12px;font-size:13px;color:var(--text2)"></div></div>' +
+        '<div class="cd" style="text-align:center;padding:30px">' +
+        '<div style="font-size:50px;margin-bottom:10px">🔊</div>' +
+        '<textarea class="inp" id="voiceTxt" placeholder="اكتب نصاً لسماعه..." style="margin-bottom:8px"></textarea>' +
+        '<button class="btn bp" onclick="F.doTTSVoice()">🔊 استمع</button></div></div>';
+};
+
+F.startSTT = function() {
+    var s = this;
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        s.toast('المتصفح لا يدعم التعرف على الصوت', 'er'); return;
+    }
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var rec = new SR();
+    rec.lang = 'ar';
+    rec.continuous = false;
+    rec.onresult = function(e) {
+        var txt = e.results[0][0].transcript;
+        var res = document.getElementById('sttResult');
+        if (res) res.innerHTML = '<div class="cd" style="margin-top:8px"><strong>النتيجة:</strong> ' + SEC.sanitize(txt) + '</div>';
+    };
+    rec.onerror = function(e) { s.toast('خطأ: ' + e.error, 'er'); };
+    rec.start();
+    s.toast('🎤 جاري الاستماع...', 'in');
+};
+
+F.doTTSVoice = function() {
+    var txt = (document.getElementById('voiceTxt')||{}).value;
+    if (!txt) return;
+    var u = new SpeechSynthesisUtterance(txt);
+    u.lang = 'ar';
+    speechSynthesis.speak(u);
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB 7: MEMORY
+// ═══════════════════════════════════════════════════════
+F.render_mem = function() {
+    var s = this;
+    var el = document.getElementById('p-mem');
+    if (!el) return;
+
+    if (s.agents.length === 0) {
+        el.innerHTML = '<div class="emy"><div class="ei">🧠</div><h3>لا توجد ذاكرة</h3><p>أنشئ وكلاء وتحدث معهم لبناء الذاكرة</p></div>';
+        return;
+    }
+
+    var rows = '';
+    for (var i = 0; i < s.agents.length; i++) {
+        var a = s.agents[i];
+        rows += '<tr><td>' + SEC.sanitize(a.icon) + ' ' + SEC.sanitize(a.name) + '</td>' +
+            '<td>' + (a.chatCount||0) + '</td>' +
+            '<td>' + (a.xp||0) + '</td>' +
+            '<td><span class="bdg bdg-g">' + s.getStage(a.xp||0) + '</span></td></tr>';
+    }
+
+    el.innerHTML = '<div class="cd-h" style="font-size:18px;margin-bottom:14px">🧠 ذاكرة الوكلاء</div>' +
+        '<div class="cd"><table style="width:100%;border-collapse:collapse">' +
+        '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:right;padding:8px;font-size:12px;color:var(--text2)">الوكيل</th>' +
+        '<th style="text-align:right;padding:8px;font-size:12px;color:var(--text2)">محادثات</th>' +
+        '<th style="text-align:right;padding:8px;font-size:12px;color:var(--text2)">XP</th>' +
+        '<th style="text-align:right;padding:8px;font-size:12px;color:var(--text2)">المرحلة</th></tr>' +
+        rows + '</table></div>';
+};
+
+F.getStage = function(xp) {
+    if (xp >= 1000) return '🌟 أسطورة';
+    if (xp >= 500) return '🏆 خبير';
+    if (xp >= 200) return '⚡ محترف';
+    if (xp >= 50) return '📖 متعلم';
+    return '🌱 مبتدئ';
+};
+
+// ═══════════════════════════════════════════════════════
+// TAB 8: KNOWLEDGE BASE
+// ═══════════════════════════════════════════════════════
+F.render_kb = function() {
+    var s = this;
+    var el = document.getElementById('p-kb');
+    if (!el) return;
+
+    var docs = '';
+    if (s.kbDocs.length === 0) {
+        docs = '<div class="emy"><div class="ei">📚</div><h3>لا توجد وثائق</h3><p>أضف وثائق معرفة لتحسين إجابات وكلائك</p></div>';
+    } else {
+        for (var i = 0; i < s.kbDocs.length; i++) {
+            var d = s.kbDocs[i];
+            docs += '<div class="cd" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center">' +
+                '<strong>' + SEC.sanitize(d.title) + '</strong>' +
+                '<button class="btn bd bxs" onclick="F.deleteKB(' + i + ')">🗑️</button></div>' +
+                '<p style="font-size:11px;color:var(--text2);margin-top:4px">' + SEC.sanitize((d.content||'').substring(0,150)) + '...</p>' +
+                '<div style="margin-top:4px"><span class="bdg bdg-b">' + SEC.sanitize(d.source||'غير محدد') + '</span></div></div>';
+        }
+    }
+
+    el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">' +
+        '<div class="cd-h" style="font-size:18px;margin:0;border:none;padding:0">📚 قاعدة المعرفة (' + s.kbDocs.length + ')</div>' +
+        '<button class="btn bg bsm" onclick="F.addKB()">➕ إضافة وثيقة</button></div>' + docs;
+};
+
+F.addKB = function() {
+    var s = this;
+    s.modal(
+        '<h2>📚 إضافة وثيقة معرفة</h2>' +
+        '<div class="fg"><label class="lbl">العنوان *</label><input class="inp" id="kbTitle" placeholder="عنوان الوثيقة"></div>' +
+        '<div class="fg"><label class="lbl">المحتوى *</label><textarea class="inp" id="kbContent" style="min-height:120px" placeholder="محتوى الوثيقة..."></textarea></div>' +
+        '<div class="fg"><label class="lbl">المصدر</label><input class="inp" id="kbSource" placeholder="مصدر المعلومة"></div>' +
+        '<div class="fg"><label class="lbl">كلمات مفتاحية</label><input class="inp" id="kbKeys" placeholder="مفصولة بفواصل"></div>' +
+        '<button class="btn bg" onclick="F.saveKB()">💾 حفظ</button>'
+    );
+};
+
+F.saveKB = function() {
+    var title = (document.getElementById('kbTitle')||{}).value;
+    var content = (document.getElementById('kbContent')||{}).value;
+    if (!title || !content) { this.toast('أدخل العنوان والمحتوى', 'er'); return; }
+    this.kbDocs.push({
+        id: this.uid(),
+        title: title,
+        content: content,
+        source: (document.getElementById('kbSource')||{}).value || '',
+        keywords: ((document.getElementById('kbKeys')||{}).value || '').split(',').map(function(k){return k.trim()}).filter(function(k){return k}),
+        createdAt: new Date().toISOString()
+    });
+    this.saveData();
+    this.closeModal();
+    this.toast('📚 تم إضافة الوثيقة', 'ok');
+    this.go('kb');
+};
+
+F.deleteKB = function(idx) {
+    this.kbDocs.splice(idx, 1);
+    this.saveData();
+    this.toast('تم حذف الوثيقة', 'in');
+    this.go('kb');
+};

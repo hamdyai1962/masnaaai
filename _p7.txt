@@ -1,0 +1,408 @@
+
+// ═══════════════════════════════════════════════════════
+// EXPORT / IMPORT / DEPLOY
+// ═══════════════════════════════════════════════════════
+F.exportAll = function() {
+    var data = {
+        version: '4.0',
+        exported: new Date().toISOString(),
+        agents: this.agents,
+        kbDocs: this.kbDocs,
+        memories: this.memories
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'hamdy-factory-backup-' + Date.now() + '.json';
+    a.click(); URL.revokeObjectURL(url);
+    this.toast('📤 تم التصدير بنجاح', 'ok');
+};
+
+F.importAgents = function() {
+    var s = this;
+    var inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = '.json';
+    inp.onchange = function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+            try {
+                var data = JSON.parse(ev.target.result);
+                if (data.agents && Array.isArray(data.agents)) {
+                    var count = 0;
+                    for (var i = 0; i < data.agents.length; i++) {
+                        var a = data.agents[i];
+                        if (a.name && a.prompt) {
+                            a.id = s.uid();
+                            a.createdAt = new Date().toISOString();
+                            s.agents.push(a);
+                            count++;
+                        }
+                    }
+                    if (data.kbDocs) { s.kbDocs = s.kbDocs.concat(data.kbDocs); }
+                    if (data.memories) { s.memories = s.memories.concat(data.memories); }
+                    s.saveData();
+                    s.toast('📥 تم استيراد ' + count + ' وكيل', 'ok');
+                    s.go('agents');
+                } else {
+                    s.toast('ملف غير صالح', 'er');
+                }
+            } catch(err) {
+                s.toast('خطأ في قراءة الملف', 'er');
+            }
+        };
+        reader.readAsText(file);
+    };
+    inp.click();
+};
+
+F.deployFactory = function() {
+    var s = this;
+    if (!s.puterOK) { s.toast('يجب الاتصال بـ Puter أولاً', 'er'); return; }
+
+    s.modal(
+        '<h2>🚀 نشر المصنع</h2>' +
+        '<p style="color:var(--text2);margin:12px 0">سيتم نشر نسخة كاملة من المصنع على Puter Hosting وستحصل على رابط مباشر.</p>' +
+        '<div class="fg"><label class="lbl">اسم الموقع</label><input class="inp" id="deployName" placeholder="my-ai-factory" value="hamdy-factory-' + Date.now().toString(36) + '"></div>' +
+        '<button class="btn bg" id="deployBtn" onclick="F.doDeployFactory()">🚀 نشر الآن</button>' +
+        '<div id="deployLog" style="margin-top:12px"></div>'
+    );
+};
+
+F.doDeployFactory = function() {
+    var s = this;
+    var name = (document.getElementById('deployName')||{}).value || 'hamdy-factory';
+    var btn = document.getElementById('deployBtn');
+    var log = document.getElementById('deployLog');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spin"></span> جاري النشر...'; }
+    if (log) log.innerHTML = '<p style="color:var(--text2);font-size:12px">⏳ جاري إنشاء الموقع...</p>';
+
+    try {
+        var html = document.documentElement.outerHTML;
+        puter.hosting.create(name, html).then(function(site) {
+            var url = 'https://' + name + '.puter.site';
+            if (log) log.innerHTML = '<div class="cd" style="text-align:center;padding:16px;border-color:var(--gbd)">' +
+                '<div style="font-size:32px;margin-bottom:8px">✅</div>' +
+                '<strong>تم النشر بنجاح!</strong>' +
+                '<p style="margin-top:8px"><a href="' + url + '" target="_blank" style="color:var(--green);font-size:14px;font-weight:700">' + url + '</a></p></div>';
+            if (btn) { btn.disabled = false; btn.innerHTML = '🚀 نشر الآن'; }
+            s.toast('🚀 تم النشر!', 'ok');
+        }).catch(function(e) {
+            if (log) log.innerHTML = '<p style="color:var(--red);font-size:12px">❌ ' + SEC.sanitize(e.message || 'خطأ في النشر') + '</p>';
+            if (btn) { btn.disabled = false; btn.innerHTML = '🚀 نشر الآن'; }
+        });
+    } catch(e) {
+        if (log) log.innerHTML = '<p style="color:var(--red);font-size:12px">❌ Puter hosting غير متاح</p>';
+        if (btn) { btn.disabled = false; btn.innerHTML = '🚀 نشر الآن'; }
+    }
+};
+
+F.deployAgent = function(idx) {
+    var s = this;
+    var a = s.agents[idx];
+    if (!a) return;
+    if (!s.puterOK) { s.toast('يجب الاتصال بـ Puter', 'er'); return; }
+
+    var sanitizedName = (a.name || 'agent').replace(/[^a-zA-Z0-9\u0600-\u06FF-]/g, '-').substring(0, 30);
+    var siteName = 'agent-' + sanitizedName + '-' + Date.now().toString(36);
+
+    var agentPage = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
+        '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+        '<title>' + SEC.sanitize(a.name) + '</title>' +
+        '<script src="https://js.puter.com/v2/"><\/script>' +
+        '<style>' +
+        '*{margin:0;padding:0;box-sizing:border-box}' +
+        'body{font-family:Tajawal,sans-serif;background:#0a0a0a;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}' +
+        '.hdr{background:#111;padding:16px;text-align:center;border-bottom:1px solid #222}' +
+        '.hdr h1{font-size:18px;margin-bottom:4px}' +
+        '.msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}' +
+        '.msg{max-width:80%;padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.8}' +
+        '.msg-u{background:#1e3a5f;align-self:flex-end;border-bottom-right-radius:4px}' +
+        '.msg-a{background:#1a1a2e;align-self:flex-start;border-bottom-left-radius:4px;border:1px solid #333}' +
+        '.ibar{display:flex;gap:8px;padding:12px;background:#111;border-top:1px solid #222}' +
+        '.ibar input{flex:1;background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:12px 16px;color:#e2e8f0;font-size:14px;font-family:inherit}' +
+        '.ibar button{background:linear-gradient(135deg,#00ff88,#00cc6a);border:none;border-radius:12px;padding:12px 20px;cursor:pointer;font-size:16px}' +
+        '</style></head><body>' +
+        '<div class="hdr"><h1>' + SEC.sanitize(a.icon) + ' ' + SEC.sanitize(a.name) + '</h1>' +
+        '<p style="font-size:12px;color:#94a3b8">' + SEC.sanitize(a.desc || '') + '</p></div>' +
+        '<div class="msgs" id="msgs"></div>' +
+        '<div class="ibar"><input id="inp" placeholder="اكتب رسالتك..." onkeydown="if(event.key===\'Enter\')send()">' +
+        '<button onclick="send()">▶️</button></div>' +
+        '<script>' +
+        'var model="' + a.model_id + '";' +
+        'var sp=' + JSON.stringify(a.prompt) + ';' +
+        'var hist=[{role:"system",content:sp}];' +
+        'function send(){' +
+        'var inp=document.getElementById("inp");var msg=inp.value.trim();if(!msg)return;inp.value="";' +
+        'addMsg(msg,"u");hist.push({role:"user",content:msg});' +
+        'puter.ai.chat(model,hist).then(function(r){' +
+        'var reply=r.message&&r.message.content||r.toString();' +
+        'hist.push({role:"assistant",content:reply});addMsg(reply,"a");' +
+        '}).catch(function(e){addMsg("خطأ: "+e.message,"a");});}' +
+        'function addMsg(t,type){' +
+        'var d=document.createElement("div");d.className="msg msg-"+type;d.textContent=t;' +
+        'var c=document.getElementById("msgs");c.appendChild(d);c.scrollTop=c.scrollHeight;}' +
+        '<\/script></body></html>';
+
+    try {
+        puter.hosting.create(siteName, agentPage).then(function() {
+            var url = 'https://' + siteName + '.puter.site';
+            a.deployedUrl = url;
+            a.deployedAt = new Date().toISOString();
+            s.saveData();
+            s.toast('🚀 تم نشر ' + a.name, 'ok');
+            s.modal(
+                '<h2>✅ تم النشر</h2>' +
+                '<p style="margin:12px 0"><a href="' + url + '" target="_blank" style="color:var(--green);font-weight:700">' + url + '</a></p>' +
+                '<button class="btn bg bsm" onclick="navigator.clipboard.writeText(\'' + url + '\');F.toast(\'تم النسخ\',\'ok\')">📋 نسخ الرابط</button>'
+            );
+        }).catch(function(e) {
+            s.toast('❌ فشل النشر: ' + e.message, 'er');
+        });
+    } catch(e) {
+        s.toast('❌ Puter hosting غير متاح', 'er');
+    }
+};
+
+// ═══════════════════════════════════════════════════════
+// CHAT ENGINE
+// ═══════════════════════════════════════════════════════
+F.chatWith = function(idx) {
+    var s = this;
+    var a = s.agents[idx];
+    if (!a) return;
+    s.currentAgent = idx;
+    if (!a.history) a.history = [];
+
+    var messagesHTML = '';
+    for (var i = 0; i < a.history.length; i++) {
+        var m = a.history[i];
+        if (m.role === 'system') continue;
+        var cls = m.role === 'user' ? 'msg-u' : 'msg-a';
+        messagesHTML += '<div class="msg ' + cls + '">' + SEC.renderMD(m.content) + '</div>';
+    }
+
+    s.modal(
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+        '<span style="font-size:28px">' + SEC.sanitize(a.icon) + '</span>' +
+        '<div><strong style="font-size:16px">' + SEC.sanitize(a.name) + '</strong>' +
+        '<div style="font-size:11px;color:var(--text3)">' + SEC.sanitize(s.getModel(a.model_id).n) + '</div></div></div>' +
+        '<div id="chatMsgs" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:12px;padding:8px;background:var(--bg);border-radius:12px;border:1px solid var(--border)">' +
+        messagesHTML +
+        '</div>' +
+        '<div style="display:flex;gap:8px">' +
+        '<input class="inp" id="chatInp" placeholder="اكتب رسالتك..." style="flex:1" onkeydown="if(event.key===\'Enter\')F.sendChat()">' +
+        '<button class="btn bg" onclick="F.sendChat()">▶️</button></div>'
+    );
+
+    setTimeout(function() {
+        var msgs = document.getElementById('chatMsgs');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+        var inp = document.getElementById('chatInp');
+        if (inp) inp.focus();
+    }, 100);
+};
+
+F.sendChat = function() {
+    var s = this;
+    var a = s.agents[s.currentAgent];
+    if (!a) return;
+    var inp = document.getElementById('chatInp');
+    var msg = (inp||{}).value;
+    if (!msg || !msg.trim()) return;
+    msg = msg.trim();
+    if (inp) inp.value = '';
+    if (!s.puterOK) { s.toast('يجب الاتصال بـ Puter', 'er'); return; }
+
+    // Add user message
+    if (!a.history || a.history.length === 0) {
+        a.history = [{role:'system', content:a.prompt}];
+    }
+    a.history.push({role:'user', content:msg});
+
+    // Show user message
+    var msgs = document.getElementById('chatMsgs');
+    if (msgs) {
+        msgs.innerHTML += '<div class="msg msg-u">' + SEC.renderMD(msg) + '</div>';
+        msgs.innerHTML += '<div class="msg msg-a" id="chatTyping"><span class="spin"></span> يكتب...</div>';
+        msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    // Inject KB context
+    var kbContext = '';
+    if (s.kbDocs.length > 0) {
+        var relevant = [];
+        var msgLower = msg.toLowerCase();
+        for (var i = 0; i < s.kbDocs.length; i++) {
+            var doc = s.kbDocs[i];
+            if (doc.title.toLowerCase().indexOf(msgLower) !== -1 ||
+                msgLower.indexOf(doc.title.toLowerCase()) !== -1 ||
+                (doc.keywords && doc.keywords.some(function(k){return msgLower.indexOf(k.toLowerCase()) !== -1;}))) {
+                relevant.push(doc);
+            }
+        }
+        if (relevant.length > 0) {
+            kbContext = '\n\n[معلومات مرجعية]:\n';
+            for (var j = 0; j < Math.min(relevant.length, 3); j++) {
+                kbContext += relevant[j].title + ': ' + relevant[j].content.substring(0, 500) + '\n';
+            }
+        }
+    }
+
+    // Inject memory context
+    var memContext = '';
+    if (s.memories.length > 0) {
+        var recentMem = s.memories.slice(-5);
+        memContext = '\n\n[ذكريات سابقة]:\n';
+        for (var k = 0; k < recentMem.length; k++) {
+            memContext += '- ' + recentMem[k].content + '\n';
+        }
+    }
+
+    var fullMessages = a.history.slice();
+    if (kbContext || memContext) {
+        fullMessages[0] = {role:'system', content: a.prompt + kbContext + memContext};
+    }
+
+    var startTime = Date.now();
+    s.callAI(fullMessages, a.model_id, a.temp || 0.7).then(function(reply) {
+        var elapsed = Date.now() - startTime;
+
+        // Remove typing indicator
+        var typing = document.getElementById('chatTyping');
+        if (typing) typing.remove();
+
+        // Show assistant message
+        if (msgs) {
+            msgs.innerHTML += '<div class="msg msg-a">' + SEC.renderMD(reply) +
+                '<div style="font-size:9px;color:var(--text3);margin-top:4px">⏱️ ' + elapsed + 'ms</div></div>';
+            msgs.scrollTop = msgs.scrollHeight;
+        }
+
+        // Save to history
+        a.history.push({role:'assistant', content:reply});
+        a.chatCount = (a.chatCount||0) + 1;
+        a.xp = (a.xp||0) + 10;
+        a.lastUsed = new Date().toISOString();
+
+        // Auto-learn memory
+        if (msg.length > 50) {
+            s.memories.push({
+                id: s.uid(),
+                agentId: a.id,
+                content: msg.substring(0, 200),
+                type: 'auto',
+                createdAt: new Date().toISOString()
+            });
+        }
+
+        s.saveData();
+        LOGGER.info('CHAT', a.name + ' responded in ' + elapsed + 'ms');
+    }).catch(function(e) {
+        var typing = document.getElementById('chatTyping');
+        if (typing) typing.remove();
+        if (msgs) {
+            msgs.innerHTML += '<div class="msg msg-a" style="border-color:var(--rbd)">❌ ' + SEC.sanitize(e.message) + '</div>';
+        }
+        a.history.pop(); // remove failed user msg
+        LOGGER.error('CHAT', e.message);
+    });
+};
+
+// ═══════════════════════════════════════════════════════
+// VIGIL — HEALTH MONITOR
+// ═══════════════════════════════════════════════════════
+F.startVigil = function() {
+    var s = this;
+    setInterval(function() {
+        VIGIL.uptime = Math.floor((Date.now() - VIGIL.startTime) / 1000);
+        VIGIL.health = Math.min(100, Math.max(0,
+            100 - (VIGIL.errors * 5) + (s.agents.length > 0 ? 10 : 0)
+        ));
+        VIGIL.lastCheck = new Date().toISOString();
+    }, 30000);
+};
+
+// ═══════════════════════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════════════════════
+document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+        switch(e.key) {
+            case 'b': e.preventDefault(); F.go('build'); break;
+            case 'h': e.preventDefault(); F.go('home'); break;
+            case 'e': e.preventDefault(); F.exportAll(); break;
+        }
+    }
+    if (e.key === 'Escape') F.closeModal();
+});
+
+// ═══════════════════════════════════════════════════════
+// INIT & BOOT
+// ═══════════════════════════════════════════════════════
+F.init = function() {
+    var s = this;
+    LOGGER.info('BOOT', 'Hamdy AI Factory v4.0 starting...');
+
+    // Load saved data
+    try {
+        var saved = localStorage.getItem('hamdyFactory_v4');
+        if (saved) {
+            var data = JSON.parse(saved);
+            s.agents = data.agents || [];
+            s.kbDocs = data.kbDocs || [];
+            s.memories = data.memories || [];
+            LOGGER.info('DATA', 'Loaded ' + s.agents.length + ' agents, ' + s.kbDocs.length + ' docs');
+        }
+    } catch(e) {
+        LOGGER.error('DATA', 'Failed to load: ' + e.message);
+    }
+
+    // Check Puter
+    setTimeout(function() {
+        try {
+            if (typeof puter !== 'undefined' && puter.ai) {
+                s.puterOK = true;
+                LOGGER.info('PUTER', 'Connected successfully');
+                // Check auth
+                puter.auth.isSignedIn().then(function(signed) {
+                    if (!signed) {
+                        puter.auth.signIn().then(function() {
+                            LOGGER.info('AUTH', 'Signed in');
+                        }).catch(function() {
+                            LOGGER.warn('AUTH', 'Sign-in skipped');
+                        });
+                    }
+                }).catch(function(){});
+            } else {
+                LOGGER.warn('PUTER', 'Not available — limited mode');
+            }
+        } catch(e) {
+            LOGGER.warn('PUTER', 'Connection error: ' + e.message);
+        }
+    }, 1000);
+
+    // Render initial tab
+    s.go('home');
+
+    // Start health monitor
+    s.startVigil();
+
+    // Emit boot event
+    EVENTBUS.emit('boot', {time: new Date().toISOString(), agents: s.agents.length});
+
+    LOGGER.info('BOOT', 'Factory ready! ' + MODELS.length + ' models, ' + s.TEMPLATES.length + ' templates');
+};
+
+// ═══════════════════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', function() {
+    F.init();
+});
+
+// Also try immediate init if DOM already ready
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(function() { F.init(); }, 100);
+}

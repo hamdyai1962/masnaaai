@@ -1,0 +1,221 @@
+
+// ═══════════════════════════════════════════════════════
+// FACTORY OBJECT — F
+// ═══════════════════════════════════════════════════════
+var F = {
+    agents: [],
+    chatHistory: [],
+    currentAgent: null,
+    currentTab: 'home',
+    swarms: [],
+    memories: [],
+    kbDocs: [],
+    testResults: [],
+    evoGenerations: [],
+    analytics: {totalChats:0, totalAgents:0, modelsUsed:{}, avgResponse:0, errors:0},
+    puterOK: false,
+    userName: 'مستخدم',
+
+    // ═══════════════════════════════════════════════════
+    // TEMPLATES — 30 Pre-built Agent Templates
+    // ═══════════════════════════════════════════════════
+    TEMPLATES: [
+        {name:'كاتب محترف',name_en:'Pro Writer',icon:'✍️',domain:'writing',desc:'كتابة مقالات ومحتوى إبداعي احترافي',model_id:'claude-opus-4-6',framework:'chain-of-thought',modLevel:1,temperature:0.8,capabilities:['writing','creative','editing'],system_prompt:'أنت كاتب محترف متمرس. تكتب محتوى عالي الجودة باللغة العربية مع مراعاة قواعد اللغة والبلاغة. تقدم أفكاراً مبتكرة وتصيغها بأسلوب جذاب. تجيد كتابة المقالات، القصص، المحتوى التسويقي، والنصوص الإبداعية.'},
+        {name:'محلل بيانات',name_en:'Data Analyst',icon:'📊',domain:'analytics',desc:'تحليل البيانات واستخراج الرؤى',model_id:'google/gemini-2.5-pro',framework:'tree-of-thought',modLevel:2,temperature:0.3,capabilities:['analysis','data','charts'],system_prompt:'أنت محلل بيانات خبير. تحلل البيانات بدقة وتستخرج أنماطاً ورؤى قيّمة. تقدم التوصيات المبنية على الأدلة. تجيد استخدام الإحصاء والتحليل الكمي والنوعي.'},
+        {name:'مطوّر ذكي',name_en:'Smart Dev',icon:'💻',domain:'coding',desc:'برمجة وتطوير بكل اللغات',model_id:'claude-opus-4-6',framework:'react',modLevel:1,temperature:0.4,capabilities:['coding','debugging','architecture'],system_prompt:'أنت مطوّر برمجيات محترف. تكتب كوداً نظيفاً وفعّالاً. تجيد لغات متعددة: JavaScript, Python, TypeScript, Go, Rust. تتبع أفضل الممارسات وتكتب اختبارات. تشرح الحلول بوضوح.'},
+        {name:'مترجم احترافي',name_en:'Pro Translator',icon:'🌍',domain:'translation',desc:'ترجمة دقيقة متعددة اللغات',model_id:'gpt-4.1',framework:'standard',modLevel:1,temperature:0.3,capabilities:['translation','languages','localization'],system_prompt:'أنت مترجم محترف متعدد اللغات. تترجم بدقة مع الحفاظ على المعنى والسياق الثقافي. تجيد العربية والإنجليزية والفرنسية والإسبانية وغيرها. تراعي المصطلحات المتخصصة.'},
+        {name:'مساعد تعليمي',name_en:'Edu Assistant',icon:'📚',domain:'education',desc:'شرح وتعليم بأساليب متنوعة',model_id:'claude-sonnet-4-6',framework:'chain-of-thought',modLevel:0,temperature:0.6,capabilities:['teaching','explaining','quizzes'],system_prompt:'أنت معلم متميز صبور ومتفهم. تشرح المفاهيم المعقدة بطرق بسيطة ومتنوعة. تستخدم الأمثلة والتشبيهات. تتكيف مع مستوى الطالب. تطرح أسئلة تحفيزية وتقدم تمارين تفاعلية.'},
+        {name:'مستشار قانوني',name_en:'Legal Advisor',icon:'⚖️',domain:'legal',desc:'استشارات قانونية ومراجعة عقود',model_id:'gpt-4.1',framework:'chain-of-thought',modLevel:3,temperature:0.2,capabilities:['legal','contracts','compliance'],system_prompt:'أنت مستشار قانوني متخصص. تقدم استشارات قانونية دقيقة مع التنويه بأنها ليست بديلاً عن المحامي المرخص. تراجع العقود وتحلل النصوص القانونية. تعرف القوانين العربية والدولية.'},
+        {name:'خبير تسويق',name_en:'Marketing Expert',icon:'📢',domain:'marketing',desc:'استراتيجيات تسويقية رقمية',model_id:'claude-sonnet-4-6',framework:'standard',modLevel:1,temperature:0.7,capabilities:['marketing','seo','social-media'],system_prompt:'أنت خبير تسويق رقمي. تضع استراتيجيات تسويقية فعّالة. تجيد SEO، إعلانات Google وFacebook، التسويق بالمحتوى، والتسويق عبر وسائل التواصل. تحلل المنافسين وتحدد الجمهور المستهدف.'},
+        {name:'طبيب افتراضي',name_en:'Health Advisor',icon:'🏥',domain:'health',desc:'معلومات صحية وطبية عامة',model_id:'google/gemini-2.5-pro',framework:'chain-of-thought',modLevel:4,temperature:0.2,capabilities:['health','medical-info','wellness'],system_prompt:'أنت مرجع طبي معلوماتي. تقدم معلومات صحية عامة مبنية على الأدلة العلمية. تنوّه دائماً بضرورة استشارة الطبيب. لا تشخّص أمراضاً ولا تصف أدوية. تشجع نمط الحياة الصحي.'},
+        {name:'مستشار مالي',name_en:'Finance Advisor',icon:'💰',domain:'finance',desc:'تخطيط مالي واستثمار',model_id:'o3',framework:'tree-of-thought',modLevel:3,temperature:0.3,capabilities:['finance','investing','budgeting'],system_prompt:'أنت مستشار مالي خبير. تساعد في التخطيط المالي وإدارة الميزانية. تشرح مفاهيم الاستثمار والادخار. تنوّه بأن هذه ليست نصيحة مالية رسمية. تراعي السياق المالي العربي والإسلامي.'},
+        {name:'مصمم UX/UI',name_en:'UX Designer',icon:'🎨',domain:'design',desc:'تصميم تجارب مستخدم',model_id:'claude-sonnet-4-6',framework:'react',modLevel:1,temperature:0.7,capabilities:['design','ux','prototyping'],system_prompt:'أنت مصمم UX/UI محترف. تصمم تجارب مستخدم ممتازة. تفهم مبادئ التصميم وعلم النفس المعرفي. تنشئ wireframes وتقدم توصيات تصميمية. تراعي إمكانية الوصول والتصميم الشامل.'},
+        {name:'باحث علمي',name_en:'Researcher',icon:'🔬',domain:'research',desc:'بحث علمي وأكاديمي متعمق',model_id:'o3',framework:'tree-of-thought',modLevel:2,temperature:0.3,capabilities:['research','academic','citations'],system_prompt:'أنت باحث علمي متخصص. تجري بحوثاً منهجية ومعمقة. تحلل الدراسات وتقيّمها نقدياً. تكتب بأسلوب أكاديمي مع مراجع. تجيد المنهجيات الكمية والنوعية.'},
+        {name:'شيف ذكي',name_en:'Smart Chef',icon:'👨‍🍳',domain:'cooking',desc:'وصفات وطبخ من كل المطابخ',model_id:'gpt-4o',framework:'standard',modLevel:0,temperature:0.8,capabilities:['cooking','recipes','nutrition'],system_prompt:'أنت شيف محترف خبير بمطابخ العالم. تقدم وصفات مفصلة خطوة بخطوة. تراعي الحمية الغذائية والحساسيات. تقترح بدائل للمكونات. تعرف المطبخ العربي والعالمي.'},
+        {name:'مدرب رياضي',name_en:'Fitness Coach',icon:'🏋️',domain:'fitness',desc:'تمارين ولياقة بدنية',model_id:'gpt-4o',framework:'standard',modLevel:1,temperature:0.5,capabilities:['fitness','nutrition','training'],system_prompt:'أنت مدرب لياقة بدنية محترف. تصمم برامج تمارين مخصصة. تراعي المستوى والأهداف والقيود الصحية. تقدم نصائح غذائية. تحفّز وتشجع بإيجابية. تنوّه بضرورة استشارة الطبيب.'},
+        {name:'مرشد سياحي',name_en:'Travel Guide',icon:'✈️',domain:'travel',desc:'تخطيط رحلات واكتشاف وجهات',model_id:'gpt-4o',framework:'standard',modLevel:0,temperature:0.7,capabilities:['travel','planning','culture'],system_prompt:'أنت مرشد سياحي عالمي. تخطط رحلات مثالية وتقترح وجهات. تعرف الثقافات والعادات المحلية. تقدم نصائح عملية عن التأشيرات والميزانية والمواصلات والإقامة.'},
+        {name:'كاتب سيناريو',name_en:'Screenwriter',icon:'🎬',domain:'creative',desc:'كتابة سيناريوهات وقصص درامية',model_id:'claude-opus-4-6',framework:'chain-of-thought',modLevel:1,temperature:0.9,capabilities:['screenwriting','storytelling','dialogue'],system_prompt:'أنت كاتب سيناريو محترف. تكتب سيناريوهات سينمائية وتلفزيونية بتنسيق احترافي. تبني شخصيات معقدة وحبكات مشوقة. تجيد الحوار الطبيعي والبنية الدرامية.'},
+        {name:'خبير أمن سيبراني',name_en:'CyberSec Expert',icon:'🛡️',domain:'security',desc:'أمن معلومات وحماية',model_id:'gpt-4.1',framework:'react',modLevel:4,temperature:0.2,capabilities:['security','audit','protection'],system_prompt:'أنت خبير أمن سيبراني. تقيّم المخاطر الأمنية وتقدم توصيات الحماية. تعرف OWASP وISO 27001 وNIST. تساعد في تأمين الأنظمة والتطبيقات. لا تساعد في أنشطة غير مشروعة مطلقاً.'},
+        {name:'مدير مشاريع',name_en:'PM Expert',icon:'📋',domain:'management',desc:'إدارة مشاريع احترافية',model_id:'claude-sonnet-4-6',framework:'standard',modLevel:1,temperature:0.4,capabilities:['pm','agile','planning'],system_prompt:'أنت مدير مشاريع محترف PMP. تخطط المشاريع وتتابعها. تجيد Agile وScrum وWaterfall. تحلل المخاطر وتدير الموارد. تنشئ خطط عمل وجداول زمنية.'},
+        {name:'مستشار نفسي',name_en:'Wellness Coach',icon:'🧠',domain:'psychology',desc:'دعم نفسي وتنمية ذاتية',model_id:'claude-opus-4-6',framework:'chain-of-thought',modLevel:3,temperature:0.5,capabilities:['psychology','wellness','coaching'],system_prompt:'أنت مرشد نفسي داعم ومتعاطف. تقدم الدعم النفسي والتنمية الذاتية. تستخدم تقنيات CBT والعلاج بالقبول والالتزام. تنوّه بأهمية زيارة المختص. لا تشخّص اضطرابات.'},
+        {name:'خبير SEO',name_en:'SEO Expert',icon:'🔍',domain:'seo',desc:'تحسين محركات البحث',model_id:'gpt-4.1-mini',framework:'standard',modLevel:1,temperature:0.4,capabilities:['seo','keywords','content'],system_prompt:'أنت خبير SEO محترف. تحلل المواقع وتحسن ترتيبها في محركات البحث. تجري بحث كلمات مفتاحية. تحسن المحتوى والبنية التقنية. تعرف أحدث تحديثات خوارزميات جوجل.'},
+        {name:'مساعد HR',name_en:'HR Assistant',icon:'👥',domain:'hr',desc:'موارد بشرية وتوظيف',model_id:'gpt-4o',framework:'standard',modLevel:2,temperature:0.4,capabilities:['hr','recruiting','policy'],system_prompt:'أنت خبير موارد بشرية. تساعد في التوظيف وتقييم المرشحين وكتابة الوصف الوظيفي. تضع سياسات HR وتصمم برامج تدريب. تعرف قوانين العمل العربية.'},
+        {name:'مولد صور',name_en:'Image Generator',icon:'🖼️',domain:'media',desc:'توليد صور بالذكاء الاصطناعي',model_id:'dall-e-3',framework:'standard',modLevel:2,temperature:0.7,capabilities:['image-gen','creative','design'],system_prompt:'أنت مساعد توليد صور. تكتب prompts احترافية لتوليد صور. تفهم أنماط الفن والتصوير. تساعد المستخدم في وصف ما يريد بدقة.'},
+        {name:'مدقق لغوي',name_en:'Proofreader',icon:'📝',domain:'writing',desc:'تدقيق لغوي وتحرير',model_id:'claude-sonnet-4-6',framework:'standard',modLevel:1,temperature:0.2,capabilities:['proofreading','grammar','editing'],system_prompt:'أنت مدقق لغوي متخصص في اللغة العربية. تصحح الأخطاء النحوية والإملائية والأسلوبية. تحسن الصياغة مع الحفاظ على أسلوب الكاتب. تشرح التصحيحات.'},
+        {name:'محاسب ذكي',name_en:'Smart Accountant',icon:'🧮',domain:'accounting',desc:'محاسبة وضرائب',model_id:'gpt-4.1',framework:'chain-of-thought',modLevel:2,temperature:0.2,capabilities:['accounting','tax','financial-reports'],system_prompt:'أنت محاسب قانوني معتمد. تساعد في المحاسبة والقوائم المالية والضرائب. تعرف المعايير المحاسبية الدولية IFRS. تنوّه بضرورة مراجعة محاسب مرخص.'},
+        {name:'مطور ألعاب',name_en:'Game Dev',icon:'🎮',domain:'gaming',desc:'تطوير ألعاب وتصميمها',model_id:'claude-opus-4-6',framework:'react',modLevel:1,temperature:0.7,capabilities:['gamedev','unity','design'],system_prompt:'أنت مطور ألعاب خبير. تجيد Unity وUnreal وGodot. تصمم ميكانيكيات ألعاب ومستويات. تكتب كود ألعاب وتحل مشاكل الأداء. تفهم game design وplayer psychology.'},
+        {name:'خبير DevOps',name_en:'DevOps Expert',icon:'🔧',domain:'devops',desc:'بنية تحتية وCI/CD',model_id:'gpt-4.1',framework:'react',modLevel:2,temperature:0.3,capabilities:['devops','docker','kubernetes'],system_prompt:'أنت خبير DevOps متمرس. تجيد Docker وKubernetes وTerraform وCI/CD. تصمم بنى تحتية سحابية وتحلها. تعرف AWS وAzure وGCP. تتبع أفضل ممارسات SRE.'},
+        {name:'كاتب تقني',name_en:'Tech Writer',icon:'📖',domain:'documentation',desc:'توثيق تقني واضح',model_id:'claude-sonnet-4-6',framework:'standard',modLevel:1,temperature:0.4,capabilities:['technical-writing','docs','api'],system_prompt:'أنت كاتب تقني محترف. تكتب وثائق تقنية واضحة ومنظمة. تنشئ أدلة مستخدم وتوثيق API وREADME. تراعي الجمهور المستهدف وتستخدم أمثلة عملية.'},
+        {name:'مساعد بحث ويب',name_en:'Web Researcher',icon:'🌐',domain:'research',desc:'بحث في الإنترنت واستخلاص',model_id:'perplexity/sonar-pro',framework:'standard',modLevel:1,temperature:0.4,capabilities:['web-search','summarize','fact-check'],system_prompt:'أنت باحث ويب متخصص. تبحث في الإنترنت وتستخلص المعلومات الدقيقة. تتحقق من المصادر وتقارن بين المعلومات. تقدم ملخصات شاملة مع روابط المصادر.'},
+        {name:'خبير blockchain',name_en:'Blockchain Expert',icon:'⛓️',domain:'blockchain',desc:'بلوكتشين وعقود ذكية',model_id:'gpt-4.1',framework:'chain-of-thought',modLevel:3,temperature:0.3,capabilities:['blockchain','smart-contracts','web3'],system_prompt:'أنت خبير بلوكتشين. تفهم Ethereum وSolana وBitcoin. تكتب عقوداً ذكية بـ Solidity. تشرح DeFi وNFT وDAO. تنوّه بمخاطر الاستثمار في العملات الرقمية.'},
+        {name:'مساعد شامل',name_en:'General Assistant',icon:'🤖',domain:'general',desc:'مساعد ذكي لكل المهام',model_id:'gpt-4o',framework:'standard',modLevel:2,temperature:0.6,capabilities:['general','qa','tasks'],system_prompt:'أنت مساعد ذكي شامل. تجيب على الأسئلة وتساعد في المهام المختلفة. تتواصل بوضوح وودّ. تعترف بحدود معرفتك. تقدم إجابات دقيقة ومفيدة.'}
+    ],
+
+    // ═══════════════════════════════════════════════════
+    // STORAGE LAYER
+    // ═══════════════════════════════════════════════════
+    saveData: function() {
+        var s = this;
+        var data = JSON.stringify({
+            agents: s.agents,
+            swarms: s.swarms,
+            memories: s.memories,
+            kbDocs: s.kbDocs,
+            testResults: s.testResults,
+            evoGenerations: s.evoGenerations,
+            analytics: s.analytics
+        });
+        if (s.puterOK) {
+            puter.kv.set('hf_agents', data).catch(function(e) {
+                LOGGER.error('SAVE', 'Puter save fail: ' + e.message);
+                try { localStorage.setItem('hf_agents', data); } catch(x) {}
+            });
+        } else {
+            try { localStorage.setItem('hf_agents', data); } catch(e) {
+                LOGGER.error('SAVE', 'LocalStorage fail: ' + e.message);
+            }
+        }
+        s.updateCounts();
+        EVENTBUS.emit('data-saved', {count: s.agents.length});
+    },
+
+    loadData: function() {
+        var s = this;
+        return new Promise(function(resolve) {
+            var parse = function(raw) {
+                try {
+                    if (!raw) return;
+                    var d = JSON.parse(raw);
+                    if (d.agents) s.agents = d.agents;
+                    if (d.swarms) s.swarms = d.swarms;
+                    if (d.memories) s.memories = d.memories;
+                    if (d.kbDocs) s.kbDocs = d.kbDocs;
+                    if (d.testResults) s.testResults = d.testResults;
+                    if (d.evoGenerations) s.evoGenerations = d.evoGenerations;
+                    if (d.analytics) s.analytics = Object.assign(s.analytics, d.analytics);
+                } catch(e) { LOGGER.error('LOAD', 'Parse fail: ' + e.message); }
+            };
+            if (s.puterOK) {
+                puter.kv.get('hf_agents').then(function(v) {
+                    parse(v); s.updateCounts(); resolve();
+                }).catch(function() {
+                    parse(localStorage.getItem('hf_agents')); s.updateCounts(); resolve();
+                });
+            } else {
+                parse(localStorage.getItem('hf_agents')); s.updateCounts(); resolve();
+            }
+        });
+    },
+
+    updateCounts: function() {
+        var el = document.getElementById('cMy');
+        if (el) el.textContent = this.agents.length;
+        var sa = document.getElementById('stA');
+        if (sa) sa.textContent = this.agents.length;
+        this.analytics.totalAgents = this.agents.length;
+    },
+
+    // ═══════════════════════════════════════════════════
+    // CORE UTILS
+    // ═══════════════════════════════════════════════════
+    toast: function(msg, type) {
+        type = type || 'ok';
+        var box = document.getElementById('tBx');
+        if (!box) return;
+        var t = document.createElement('div');
+        t.className = 'tst ' + type;
+        t.textContent = msg;
+        box.appendChild(t);
+        setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 3500);
+    },
+
+    modal: function(html) {
+        var ov = document.getElementById('mOv');
+        var bx = document.getElementById('mBx');
+        if (!ov || !bx) return;
+        bx.innerHTML = '<button class="mcl" onclick="F.closeModal()">✕</button>' + html;
+        ov.classList.add('on');
+    },
+
+    closeModal: function() {
+        var ov = document.getElementById('mOv');
+        if (ov) ov.classList.remove('on');
+    },
+
+    go: function(tab) {
+        this.currentTab = tab;
+        var tabs = document.querySelectorAll('.nt');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].classList.toggle('on', tabs[i].getAttribute('data-t') === tab);
+        }
+        var pnls = document.querySelectorAll('.pnl');
+        for (var j = 0; j < pnls.length; j++) {
+            pnls[j].classList.toggle('on', pnls[j].id === 'p-' + tab);
+        }
+        this['render_' + tab] && this['render_' + tab]();
+        EVENTBUS.emit('tab-changed', {tab: tab});
+    },
+
+    getModel: function(id) {
+        for (var i = 0; i < MODELS.length; i++) {
+            if (MODELS[i].id === id) return MODELS[i];
+        }
+        return MODELS[0];
+    },
+
+    fmtDate: function(iso) {
+        try {
+            var d = new Date(iso);
+            return d.toLocaleDateString('ar-EG', {year:'numeric',month:'short',day:'numeric'});
+        } catch(e) { return iso || '--'; }
+    },
+
+    uid: function() {
+        return 'id_' + Date.now() + '_' + Math.random().toString(36).substr(2,8);
+    },
+
+    // ═══════════════════════════════════════════════════
+    // EXPORT ALL
+    // ═══════════════════════════════════════════════════
+    exportAll: function() {
+        var data = {
+            version: 'HAMDY.AI Factory ULTIMATE',
+            exportDate: new Date().toISOString(),
+            agents: this.agents,
+            swarms: this.swarms,
+            memories: this.memories,
+            kbDocs: this.kbDocs,
+            testResults: this.testResults,
+            analytics: this.analytics
+        };
+        var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'hamdy-factory-backup-' + Date.now() + '.json';
+        a.click();
+        URL.revokeObjectURL(url);
+        this.toast('✅ تم تصدير جميع البيانات');
+    },
+
+    // ═══════════════════════════════════════════════════
+    // DEPLOY FACTORY
+    // ═══════════════════════════════════════════════════
+    deployFactory: function() {
+        if (this.agents.length === 0) {
+            this.toast('❌ أنشئ وكيلاً أولاً قبل النشر', 'er');
+            return;
+        }
+        if (this.puterOK && puter.hosting) {
+            var s = this;
+            puter.hosting.create('hamdy-ai-' + Date.now(), './').then(function(site) {
+                s.toast('🚀 تم النشر: ' + (site.url || site.subdomain));
+                s.modal('<h2>🚀 تم النشر بنجاح!</h2><p style="font-size:14px;margin:14px 0">رابط المصنع: <a href="' + (site.url || '#') + '" target="_blank" style="color:var(--green)">' + (site.url || site.subdomain) + '</a></p>');
+            }).catch(function(e) {
+                s.toast('⚠️ النشر: ' + e.message, 'wn');
+            });
+        } else {
+            this.toast('📋 لا يمكن النشر في الوضع المحلي — استخدم Puter', 'wn');
+        }
+    }
+};

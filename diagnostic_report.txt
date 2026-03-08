@@ -1,0 +1,13 @@
+﻿HamDyAI Factory Diagnostic Report
+Date: 03/08/2026 05:18:52
+Path: C:\HamDyAI-Factory
+Files: 10 (HTML:1 JS:0 CSS:0)
+Lines: 2553
+Size: 165.6 KB
+Braces { }: Open=799 Close=799 Diff=0
+Parens ( ): Open=1910 Close=1910 Diff=0
+Brackets [ ]: Open=200 Close=200 Diff=0
+Script tags: Open=5 Close=2 Diff=3
+Tabs found: 11 / 15
+Functions found: 3 / 14
+Critical Errors: 2

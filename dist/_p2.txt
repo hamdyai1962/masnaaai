@@ -1,0 +1,353 @@
+
+// ═══════════════════════════════════════════════════════
+// LAYER 1: EVENTBUS
+// ═══════════════════════════════════════════════════════
+var EVENTBUS = {
+    _l: {},
+    _h: [],
+    on: function(e, f) {
+        if (!this._l[e]) this._l[e] = [];
+        this._l[e].push(f);
+    },
+    emit: function(e, d) {
+        this._h.push({e:e, d:d, t:Date.now()});
+        if (this._h.length > 300) this._h = this._h.slice(-200);
+        var fs = this._l[e];
+        if (fs) { for (var i = 0; i < fs.length; i++) { try { fs[i](d); } catch(x) { console.error('EB:', e, x); } } }
+    },
+    off: function(e, f) {
+        if (!this._l[e]) return;
+        this._l[e] = this._l[e].filter(function(x) { return x !== f; });
+    }
+};
+
+// ═══════════════════════════════════════════════════════
+// LAYER 2: LOGGER
+// ═══════════════════════════════════════════════════════
+var LOGGER = {
+    logs: [],
+    MAX: 500,
+    _log: function(lv, cat, msg, data) {
+        var entry = {lv:lv, cat:cat, msg:msg, data:data, ts:Date.now()};
+        this.logs.push(entry);
+        if (this.logs.length > this.MAX) this.logs = this.logs.slice(-400);
+        var cl = {DEBUG:'#64748b',INFO:'#3b82f6',WARN:'#f97316',ERROR:'#ef4444'};
+        console.log('%c[' + lv + '] ' + cat + ': ' + msg, 'color:' + (cl[lv]||'#94a3b8'), data||'');
+        if (lv === 'ERROR') EVENTBUS.emit('error', entry);
+    },
+    debug: function(c, m, d) { this._log('DEBUG', c, m, d); },
+    info: function(c, m, d) { this._log('INFO', c, m, d); },
+    warn: function(c, m, d) { this._log('WARN', c, m, d); },
+    error: function(c, m, d) { this._log('ERROR', c, m, d); },
+    getErrors: function() { return this.logs.filter(function(l) { return l.lv === 'ERROR'; }); },
+    getRecent: function(n) { return this.logs.slice(-(n || 20)); },
+    getAll: function() { return this.logs; },
+    clear: function() { this.logs = []; }
+};
+
+// ═══════════════════════════════════════════════════════
+// LAYER 3: SEC (Security — OWASP 2025 for LLMs)
+// ═══════════════════════════════════════════════════════
+var SEC = {
+    sanitize: function(input) {
+        if (typeof input !== 'string') return '';
+        return input.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
+    },
+    safeJSON: function(obj) {
+        return JSON.stringify(obj).replace(/</g,'\\u003C').replace(/>/g,'\\u003E');
+    },
+    sanitizePrompt: function(p) {
+        if (typeof p !== 'string') return '';
+        var pats = [
+            /ignore\s+(all\s+)?previous\s+instructions/gi,
+            /forget\s+(your\s+)?(instructions|training)/gi,
+            /you\s+are\s+now/gi,
+            /act\s+as/gi,
+            /pretend\s+(to\s+be|you\s+are)/gi,
+            /تجاهل\s*(كل)?\s*التعليمات/gi,
+            /أنت\s+الآن/gi,
+            /\[SYSTEM\]/gi,
+            /<\|im_start\|>/gi,
+            /<\|endoftext\|>/gi
+        ];
+        var c = p;
+        for (var i = 0; i < pats.length; i++) c = c.replace(pats[i], '[blocked]');
+        return c;
+    },
+    renderMD: function(text) {
+        if (!text) return '';
+        var s = this.sanitize(text);
+        s = s.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+        s = s.replace(/`([^`]+)`/g, '<code style="background:rgba(0,255,136,0.1);padding:2px 5px;border-radius:4px">$1</code>');
+        s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        s = s.replace(/\n/g, '<br>');
+        return s;
+    },
+    validateAgent: function(a) {
+        if (!a || typeof a !== 'object' || !a.name) return null;
+        return {
+            id: 'agent_' + Date.now() + '_' + Math.random().toString(36).substr(2,6),
+            name: this.sanitize(a.name).substring(0,100),
+            name_en: this.sanitize(a.name_en||'').substring(0,100),
+            icon: (a.icon||'🤖').substring(0,4),
+            domain: this.sanitize(a.domain||'custom').substring(0,30),
+            desc: this.sanitize(a.desc||'').substring(0,500),
+            model_id: this.sanitize(a.model_id||'gpt-4o').substring(0,60),
+            fallback_model: this.sanitize(a.fallback_model||'gpt-4o-mini').substring(0,60),
+            framework: this.sanitize(a.framework||'standard').substring(0,20),
+            modLevel: Math.min(5, Math.max(0, parseInt(a.modLevel)||2)),
+            temperature: Math.min(1.5, Math.max(0, parseFloat(a.temperature)||0.7)),
+            capabilities: Array.isArray(a.capabilities) ? a.capabilities.slice(0,10) : [],
+            knowledge: this.sanitize(a.knowledge||'').substring(0,5000),
+            system_prompt: (a.system_prompt||'').substring(0,10000),
+            dna: a.dna||null,
+            quality_score: Math.min(100, Math.max(0, parseInt(a.quality_score)||0)),
+            xp: parseInt(a.xp)||0,
+            chatCount: parseInt(a.chatCount)||0,
+            deployed: false,
+            deploy_url: '',
+            createdAt: a.createdAt || new Date().toISOString()
+        };
+    },
+    applyCSP: function() {
+        try {
+            var m = document.createElement('meta');
+            m.httpEquiv = 'Content-Security-Policy';
+            m.content = "default-src 'self' https://js.puter.com https://fonts.googleapis.com https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.puter.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src * data: blob:; connect-src *; media-src * blob:;";
+            document.head.appendChild(m);
+        } catch(e) { LOGGER.debug('CSP', 'Failed: ' + e.message); }
+    }
+};
+
+// ═══════════════════════════════════════════════════════
+// LAYER 4: PERF
+// ═══════════════════════════════════════════════════════
+var PERF = {
+    debounce: function(fn, d) {
+        var t;
+        return function() {
+            var s = this, a = arguments;
+            clearTimeout(t);
+            t = setTimeout(function() { fn.apply(s, a); }, d);
+        };
+    },
+    throttle: function(fn, lim) {
+        var last = 0;
+        return function() {
+            var now = Date.now();
+            if (now - last >= lim) { last = now; fn.apply(this, arguments); }
+        };
+    },
+    trimHistory: function(h, mid) {
+        var limits = {
+            'google/gemini-2.5-pro':200, 'google/gemini-2.5-flash':200,
+            'gpt-5-nano':100, 'gpt-5-mini':100, 'o3':100, 'o4-mini':100,
+            'claude-opus-4-6':100, 'claude-sonnet-4-6':100,
+            'gpt-4.1':80, 'gpt-4o':80, 'grok-3-mini':80,
+            'deepseek-r1':60, 'deepseek-chat':60
+        };
+        var mx = limits[mid] || 60;
+        return h.length > mx ? h.slice(-mx) : h;
+    },
+    paginate: function(items, page, ps) {
+        ps = ps || 12;
+        var total = Math.ceil(items.length / ps);
+        var p = Math.max(1, Math.min(page, total || 1));
+        var start = (p - 1) * ps;
+        return {items: items.slice(start, start + ps), page: p, total: total, hasNext: p < total, hasPrev: p > 1};
+    }
+};
+
+// ═══════════════════════════════════════════════════════
+// LAYER 5: RESILIENCE (Circuit Breaker + Retry)
+// ═══════════════════════════════════════════════════════
+var RESILIENCE = {
+    circuits: {},
+    TH: {fails:3, timeout:30000, halfOpen:60000},
+    getCircuit: function(id) {
+        if (!this.circuits[id]) this.circuits[id] = {state:'CLOSED', failures:0, lastFail:0};
+        return this.circuits[id];
+    },
+    isOpen: function(id) {
+        var c = this.getCircuit(id);
+        if (c.state === 'CLOSED') return false;
+        if (c.state === 'OPEN') {
+            if (Date.now() - c.lastFail > this.TH.halfOpen) {
+                c.state = 'HALF_OPEN';
+                LOGGER.info('CIRCUIT', id + ' => HALF_OPEN');
+                return false;
+            }
+            return true;
+        }
+        return false;
+    },
+    recordOK: function(id) { var c = this.getCircuit(id); c.failures = 0; c.state = 'CLOSED'; },
+    recordFail: function(id) {
+        var c = this.getCircuit(id);
+        c.failures++;
+        c.lastFail = Date.now();
+        if (c.failures >= this.TH.fails) {
+            c.state = 'OPEN';
+            LOGGER.warn('CIRCUIT', id + ' => OPEN (' + c.failures + ' fails)');
+            EVENTBUS.emit('circuit-open', {id:id});
+        }
+    },
+    callSafe: function(modelId, fn, fallbackFn, retries) {
+        var self = this;
+        var mx = retries || 2;
+        return new Promise(function(resolve, reject) {
+            if (self.isOpen(modelId)) {
+                LOGGER.warn('RES', 'Circuit OPEN: ' + modelId);
+                if (fallbackFn) { fallbackFn().then(resolve).catch(reject); }
+                else { reject(new Error('Circuit open: ' + modelId)); }
+                return;
+            }
+            var attempt = function(i) {
+                var tout = new Promise(function(_, rj) {
+                    setTimeout(function() { rj(new Error('Timeout 30s')); }, self.TH.timeout);
+                });
+                Promise.race([fn(), tout]).then(function(r) {
+                    self.recordOK(modelId);
+                    resolve(r);
+                }).catch(function(err) {
+                    LOGGER.warn('RES', 'Attempt ' + (i+1) + ' fail: ' + modelId + ' - ' + err.message);
+                    self.recordFail(modelId);
+                    if (i < mx - 1) {
+                        var delay = Math.pow(2, i) * 1000 + Math.random() * 500;
+                        setTimeout(function() { attempt(i + 1); }, delay);
+                    } else if (fallbackFn) {
+                        LOGGER.warn('RES', 'Fallback for ' + modelId);
+                        fallbackFn().then(resolve).catch(reject);
+                    } else { reject(err); }
+                });
+            };
+            attempt(0);
+        });
+    }
+};
+
+// ═══════════════════════════════════════════════════════
+// LAYER 6: MODELS (30 Models — March 2026)
+// ═══════════════════════════════════════════════════════
+var MODELS = [
+    {id:'claude-opus-4-6',n:'Claude Opus 4.6',p:'Anthropic',icon:'🟣',tier:'elite',ctx:200000,vision:true,desc:'أقوى نموذج أنثروبيك للمهام المعقدة'},
+    {id:'claude-sonnet-4-6',n:'Claude Sonnet 4.6',p:'Anthropic',icon:'🟣',tier:'pro',ctx:200000,vision:true,desc:'توازن بين القوة والسرعة'},
+    {id:'claude-opus-4-5',n:'Claude Opus 4.5',p:'Anthropic',icon:'🟣',tier:'elite',ctx:200000,vision:true,desc:'نموذج متقدم من أنثروبيك'},
+    {id:'claude-sonnet-4-5',n:'Claude Sonnet 4.5',p:'Anthropic',icon:'🟣',tier:'pro',ctx:200000,vision:true,desc:'سريع ودقيق'},
+    {id:'claude-haiku-4-5',n:'Claude Haiku 4.5',p:'Anthropic',icon:'🟣',tier:'fast',ctx:200000,vision:true,desc:'أسرع نموذج أنثروبيك'},
+    {id:'gpt-5-nano',n:'GPT-5 Nano',p:'OpenAI',icon:'🟢',tier:'fast',ctx:128000,vision:true,desc:'خفيف وسريع جداً'},
+    {id:'gpt-5-mini',n:'GPT-5 Mini',p:'OpenAI',icon:'🟢',tier:'pro',ctx:128000,vision:true,desc:'قدرات عالية متوسط السرعة'},
+    {id:'gpt-4.1',n:'GPT-4.1',p:'OpenAI',icon:'🟢',tier:'elite',ctx:128000,vision:true,desc:'النموذج الرئيسي من OpenAI'},
+    {id:'gpt-4.1-nano',n:'GPT-4.1 Nano',p:'OpenAI',icon:'🟢',tier:'fast',ctx:128000,vision:true,desc:'نسخة خفيفة من GPT-4.1'},
+    {id:'gpt-4.1-mini',n:'GPT-4.1 Mini',p:'OpenAI',icon:'🟢',tier:'pro',ctx:128000,vision:true,desc:'نسخة متوسطة'},
+    {id:'gpt-4o',n:'GPT-4o',p:'OpenAI',icon:'🟢',tier:'pro',ctx:128000,vision:true,desc:'متعدد الوسائط'},
+    {id:'o3',n:'O3',p:'OpenAI',icon:'🟢',tier:'elite',ctx:200000,vision:true,desc:'نموذج استدلال متقدم'},
+    {id:'o4-mini',n:'O4 Mini',p:'OpenAI',icon:'🟢',tier:'pro',ctx:200000,vision:true,desc:'استدلال سريع'},
+    {id:'google/gemini-2.5-pro',n:'Gemini 2.5 Pro',p:'Google',icon:'🔵',tier:'elite',ctx:1000000,vision:true,desc:'مليون توكن! أقوى نموذج جوجل'},
+    {id:'google/gemini-2.5-flash',n:'Gemini 2.5 Flash',p:'Google',icon:'🔵',tier:'fast',ctx:1000000,vision:true,desc:'سريع مع مليون توكن'},
+    {id:'deepseek-r1',n:'DeepSeek R1',p:'DeepSeek',icon:'🟠',tier:'pro',ctx:64000,vision:false,desc:'استدلال صيني قوي'},
+    {id:'deepseek-chat',n:'DeepSeek Chat',p:'DeepSeek',icon:'🟠',tier:'fast',ctx:64000,vision:false,desc:'محادثة سريعة'},
+    {id:'grok-3-mini',n:'Grok 3 Mini',p:'xAI',icon:'⚡',tier:'pro',ctx:131000,vision:false,desc:'نموذج xAI السريع'},
+    {id:'meta-llama/llama-3.3-70b-instruct',n:'Llama 3.3 70B',p:'Meta',icon:'🦙',tier:'pro',ctx:128000,vision:false,desc:'مفتوح المصدر من ميتا'},
+    {id:'qwen/qwen3-235b-a22b',n:'Qwen3 235B',p:'Alibaba',icon:'🏮',tier:'elite',ctx:128000,vision:false,desc:'نموذج عملاق من علي بابا'},
+    {id:'qwen/qwen3.5-397b-a17b',n:'Qwen3.5 397B',p:'Alibaba',icon:'🏮',tier:'elite',ctx:128000,vision:false,desc:'أكبر نموذج MoE'},
+    {id:'mistralai/mistral-large',n:'Mistral Large',p:'Mistral',icon:'🇫🇷',tier:'pro',ctx:32000,vision:false,desc:'نموذج فرنسي قوي'},
+    {id:'cohere/command-r-plus',n:'Command R+',p:'Cohere',icon:'🔷',tier:'pro',ctx:128000,vision:false,desc:'ممتاز للتحليل'},
+    {id:'moonshotai/kimi-k2',n:'Kimi K2',p:'Moonshot',icon:'🌙',tier:'pro',ctx:128000,vision:false,desc:'نموذج صيني متقدم'},
+    {id:'moonshotai/kimi-k2-thinking',n:'Kimi K2 Thinking',p:'Moonshot',icon:'🌙',tier:'elite',ctx:128000,vision:false,desc:'تفكير عميق'},
+    {id:'perplexity/sonar-pro',n:'Sonar Pro',p:'Perplexity',icon:'🔍',tier:'pro',ctx:128000,vision:false,desc:'بحث حي في الإنترنت'},
+    {id:'gpt-image-1',n:'GPT Image 1',p:'OpenAI',icon:'🎨',tier:'pro',ctx:0,vision:false,desc:'توليد صور'},
+    {id:'gpt-image-1.5',n:'GPT Image 1.5',p:'OpenAI',icon:'🎨',tier:'elite',ctx:0,vision:false,desc:'توليد صور متقدم'},
+    {id:'dall-e-3',n:'DALL-E 3',p:'OpenAI',icon:'🎨',tier:'pro',ctx:0,vision:false,desc:'صور إبداعية'},
+    {id:'flux-1.1-pro',n:'Flux 1.1 Pro',p:'Black Forest',icon:'🎨',tier:'pro',ctx:0,vision:false,desc:'صور عالية الجودة'}
+];
+
+// ═══════════════════════════════════════════════════════
+// LAYER 7: VIGIL Guardian v3
+// ═══════════════════════════════════════════════════════
+var VIGIL = {
+    _iv: null,
+    checks: {puter:false, storage:false, agents:false, perf:false, errors:false},
+    health: 0,
+    start: function() {
+        var s = this;
+        LOGGER.info('VIGIL', 'Guardian v3 starting...');
+        s.runAll();
+        s._iv = setInterval(function() { s.runAll(); }, 180000);
+    },
+    stop: function() {
+        if (this._iv) { clearInterval(this._iv); this._iv = null; LOGGER.info('VIGIL', 'Stopped'); }
+    },
+    runAll: function() {
+        var s = this;
+        s.checkPuter(); s.checkStorage(); s.checkAgents(); s.checkPerf(); s.checkErrors();
+        var p = 0;
+        var ks = ['puter','storage','agents','perf','errors'];
+        for (var i = 0; i < ks.length; i++) { if (s.checks[ks[i]]) p++; }
+        s.health = Math.round((p / 5) * 100);
+        var el = document.getElementById('stH');
+        if (el) {
+            var em = s.health >= 80 ? '💚' : s.health >= 50 ? '💛' : '❤️';
+            el.textContent = em + ' صحة: ' + s.health + '%';
+        }
+    },
+    checkPuter: function() {
+        var s = this;
+        try {
+            if (typeof puter !== 'undefined' && puter.kv) {
+                var tk = 'vping_' + Date.now();
+                puter.kv.set(tk, 'ok').then(function() {
+                    return puter.kv.get(tk);
+                }).then(function(v) {
+                    s.checks.puter = (v === 'ok');
+                    return puter.kv.del(tk);
+                }).catch(function(e) {
+                    s.checks.puter = false;
+                    LOGGER.debug('VIGIL', 'Puter ping fail: ' + e.message);
+                });
+            } else { s.checks.puter = false; }
+        } catch(e) { s.checks.puter = false; LOGGER.debug('VIGIL', e.message); }
+    },
+    checkStorage: function() {
+        var s = this;
+        try {
+            if (typeof puter !== 'undefined' && puter.kv) {
+                puter.kv.get('hf_agents').then(function() { s.checks.storage = true; }).catch(function() { s.checks.storage = false; });
+            } else {
+                localStorage.getItem('hf_agents');
+                s.checks.storage = true;
+            }
+        } catch(e) { s.checks.storage = false; }
+    },
+    checkAgents: function() {
+        try {
+            if (typeof F !== 'undefined' && F.agents) {
+                var fx = 0;
+                for (var i = 0; i < F.agents.length; i++) {
+                    var a = F.agents[i];
+                    if (!a.id) { a.id = 'fix_' + Date.now() + '_' + i; fx++; }
+                    if (!a.name) { a.name = 'وكيل'; fx++; }
+                    if (!a.system_prompt) { a.system_prompt = 'أنت مساعد ذكي.'; fx++; }
+                }
+                if (fx > 0) { LOGGER.warn('VIGIL', 'Fixed ' + fx + ' issues'); F.saveData(); }
+                this.checks.agents = true;
+            } else { this.checks.agents = true; }
+        } catch(e) { this.checks.agents = false; }
+    },
+    checkPerf: function() {
+        try {
+            if (typeof F !== 'undefined' && F.chatHistory && F.chatHistory.length > 80) {
+                F.chatHistory = F.chatHistory.slice(-60);
+                LOGGER.info('VIGIL', 'Trimmed chatHistory');
+            }
+            this.checks.perf = true;
+        } catch(e) { this.checks.perf = false; }
+    },
+    checkErrors: function() {
+        try {
+            var recent = LOGGER.logs.filter(function(l) { return l.lv === 'ERROR' && (Date.now() - l.ts) < 60000; });
+            this.checks.errors = (recent.length < 10);
+        } catch(e) { this.checks.errors = true; }
+    }
+};
